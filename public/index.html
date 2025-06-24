@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🌿 AI Crop Disease Classifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      background: #e6f4e6;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    h1 {
+      color: #2e7d32;
+      margin-bottom: 10px;
+    }
+    input[type="file"] {
+      margin: 15px 0;
+      padding: 10px;
+      width: 100%;
+    }
+    button {
+      background: #2e7d32;
+      color: white;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      width: 100%;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌾 Crop Disease Classifier</h1>
+    <input type="file" id="imageInput" accept="image/*" />
+    <button onclick="classifyImage()">Classify Image</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    async function classifyImage() {
+      const file = document.getElementById('imageInput').files[0];
+      if (!file) return alert("Please choose an image first.");
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerText = "⏳ Classifying... please wait.";
+
+      try {
+        const res = await fetch('/classify', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          const errorText = "❌ Error: " + data.message;
+          resultDiv.innerText = errorText;
+          speak(errorText);
+        } else {
+          const top = data[0];
+          const label = top.label.replace("_", " ");
+          const percent = (top.score * 100).toFixed(1);
+          const message = `✅ This crop is affected by: ${label} (${percent}%)`;
+          resultDiv.innerText = message;
+          speak(message);
+        }
+      } catch (err) {
+        const errMsg = "❌ Connection error. Please try again.";
+        resultDiv.innerText = errMsg;
+        speak(errMsg);
+      }
+    }
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'en-US';
+        speechSynthesis.speak(utter);
+      }
+    }
+
+    window.speechSynthesis.onvoiceschanged = () => speak('', 'en-US');
+  </script>
+</body>
+</html>

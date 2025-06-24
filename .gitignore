@@ -1,0 +1,4 @@
+ECHO is on.
+.env
+uploads/
+node_modules/
