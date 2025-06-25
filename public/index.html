@@ -2,107 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🌿 AI Crop Disease Classifier</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🌾 Crop Disease Classifier</title>
   <style>
     body {
-      background: #e6f4e6;
-      font-family: 'Segoe UI', sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background-color: #f0fdf4;
       margin: 0;
-    }
-    .container {
-      background: #ffffff;
-      border-radius: 16px;
-      padding: 30px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-      width: 100%;
-      max-width: 400px;
+      padding: 20px;
       text-align: center;
     }
     h1 {
-      color: #2e7d32;
-      margin-bottom: 10px;
+      color: #157347;
+    }
+    form {
+      margin-top: 20px;
     }
     input[type="file"] {
-      margin: 15px 0;
-      padding: 10px;
-      width: 100%;
+      margin: 10px 0;
     }
     button {
-      background: #2e7d32;
+      background-color: #157347;
       color: white;
-      padding: 12px;
       border: none;
-      border-radius: 8px;
-      width: 100%;
+      padding: 10px 20px;
       font-size: 16px;
       cursor: pointer;
+      border-radius: 5px;
     }
-    #result {
-      margin-top: 20px;
-      font-weight: bold;
-      color: #333;
+    button:hover {
+      background-color: #145c3c;
+    }
+    img {
+      max-width: 300px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    .result-box {
+      background: #e9fbe9;
+      padding: 20px;
+      border-radius: 10px;
+      border: 2px solid #c1e1c1;
+      max-width: 600px;
+      margin: 20px auto;
+      text-align: left;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🌾 Crop Disease Classifier</h1>
-    <input type="file" id="imageInput" accept="image/*" />
-    <button onclick="classifyImage()">Classify Image</button>
-    <div id="result"></div>
-  </div>
+  <h1>🌾 Crop Disease Classifier</h1>
+
+  <form id="uploadForm">
+    <input type="file" id="image" accept="image/*" required />
+    <br />
+    <button type="submit">Classify Image</button>
+  </form>
+
+  <img id="preview" style="display: none;" />
+  <div id="result" class="result-box"></div>
 
   <script>
-    async function classifyImage() {
-      const file = document.getElementById('imageInput').files[0];
-      if (!file) return alert("Please choose an image first.");
+    document.getElementById("image").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      const preview = document.getElementById("preview");
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = "block";
+      } else {
+        preview.style.display = "none";
+      }
+    });
 
+    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
       const formData = new FormData();
-      formData.append('image', file);
+      const fileInput = document.getElementById("image");
+      const file = fileInput.files[0];
+      formData.append("image", file);
 
-      const resultDiv = document.getElementById('result');
-      resultDiv.innerText = "⏳ Classifying... please wait.";
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = `
+        <p>🔍 Uploading and analyzing image...</p>
+        <p>🤖 Asking AI for treatment suggestion...</p>
+      `;
 
       try {
-        const res = await fetch('/classify', {
-          method: 'POST',
-          body: formData
+        const res = await fetch("/classify", {
+          method: "POST",
+          body: formData,
         });
         const data = await res.json();
 
-        if (data.error) {
-          const errorText = "❌ Error: " + data.message;
-          resultDiv.innerText = errorText;
-          speak(errorText);
-        } else {
-          const top = data[0];
-          const label = top.label.replace("_", " ");
-          const percent = (top.score * 100).toFixed(1);
-          const message = `✅ This crop is affected by: ${label} (${percent}%)`;
-          resultDiv.innerText = message;
-          speak(message);
-        }
+        const prediction = data[0];
+        const label = prediction.label;
+        const score = (prediction.score * 100).toFixed(2) + "%";
+
+        const treatmentRes = await fetch("/treatment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ diseaseName: label }),
+        });
+        const treatmentData = await treatmentRes.json();
+        const treatment = treatmentData.treatment || "No treatment found.";
+
+        const previewURL = URL.createObjectURL(file);
+
+        resultDiv.innerHTML = `
+          <img src="${previewURL}" />
+          <p>✅ <strong>${label}</strong> (${score})</p>
+          <p>🧪 <strong>Treatment Suggestion:</strong><br>${treatment}</p>
+        `;
       } catch (err) {
-        const errMsg = "❌ Connection error. Please try again.";
-        resultDiv.innerText = errMsg;
-        speak(errMsg);
+        resultDiv.innerHTML = `❌ Error: ${err.message}`;
       }
-    }
-
-    function speak(text) {
-      if ('speechSynthesis' in window) {
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'en-US';
-        speechSynthesis.speak(utter);
-      }
-    }
-
-    window.speechSynthesis.onvoiceschanged = () => speak('', 'en-US');
+    });
   </script>
 </body>
 </html>

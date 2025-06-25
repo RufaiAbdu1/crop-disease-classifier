@@ -8,10 +8,10 @@ const app = express();
 const upload = multer({ dest: "uploads/" });
 const PORT = process.env.PORT || 3000;
 
-// Serve frontend from public folder
 app.use(express.static("public"));
+app.use(express.json());
 
-// API endpoint to handle image upload and classification
+// Route: POST /classify - Send image to Hugging Face
 app.post("/classify", upload.single("image"), async (req, res) => {
   const imagePath = req.file.path;
 
@@ -24,19 +24,50 @@ app.post("/classify", upload.single("image"), async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/octet-stream"
-        }
+          "Content-Type": "application/octet-stream",
+        },
       }
     );
 
-    fs.unlinkSync(imagePath); // Clean up
+    fs.unlinkSync(imagePath); // Clean up uploaded image
 
-    res.json(response.data); // Send prediction to frontend
+    res.json(response.data);
   } catch (error) {
     fs.unlinkSync(imagePath);
     res.status(500).json({
       error: "Failed to classify image",
-      message: error.message
+      message: error.message,
+    });
+  }
+});
+
+// Route: POST /treatment - Use OpenRouter to generate treatment advice
+app.post("/treatment", async (req, res) => {
+  const { diseaseName } = req.body;
+
+  try {
+    const prompt = `Suggest practical, short, and beginner-friendly treatment advice for this crop disease: "${diseaseName}". Focus on tips suitable for rural Nigerian farmers.`;
+
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openai/gpt-3.5-turbo",
+        messages: [{ role: "user", content: prompt }],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const treatment = response.data.choices[0].message.content;
+    res.json({ treatment });
+  } catch (err) {
+    res.status(500).json({
+      error: "AI treatment generation failed",
+      message: err.message,
     });
   }
 });
