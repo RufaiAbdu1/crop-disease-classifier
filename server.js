@@ -44,16 +44,15 @@ app.post("/classify", upload.single("image"), async (req, res) => {
 // Route: POST /treatment - Use OpenRouter to generate treatment advice
 app.post("/treatment", async (req, res) => {
   const { diseaseName } = req.body;
+  const cleanName = diseaseName.replace(/[_]/g, " ").replace(/\s+/g, " ").trim();
 
   try {
-    const prompt = `You are an agricultural expert. Provide a brief, clear, and practical treatment for the crop disease called "${diseaseName}". 
-The treatment should be safe, affordable, and suitable for rural farmers in Nigeria. Mention the crop name too if possible.`;
-
+    const prompt = `You are an experienced agricultural extension officer. Provide simple, practical treatment advice for "${cleanName}". Keep it short, local, and relevant to Nigerian farmers.`;
 
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-3.5-turbo",
+        model: "mistralai/mixtral-8x7b",
         messages: [{ role: "user", content: prompt }],
       },
       {
@@ -64,7 +63,11 @@ The treatment should be safe, affordable, and suitable for rural farmers in Nige
       }
     );
 
-    const treatment = response.data.choices[0].message.content;
+    let treatment = response.data.choices[0]?.message?.content?.trim();
+    if (!treatment) {
+      treatment = "🧪 Sorry, no treatment suggestion was found. Try another image or crop.";
+    }
+
     res.json({ treatment });
   } catch (err) {
     res.status(500).json({
@@ -73,6 +76,7 @@ The treatment should be safe, affordable, and suitable for rural farmers in Nige
     });
   }
 });
+
 
 // Start server
 app.listen(PORT, () => {
