@@ -46,7 +46,9 @@ app.post("/treatment", async (req, res) => {
   const { diseaseName } = req.body;
 
   try {
-    const prompt = `Suggest practical, short, and beginner-friendly treatment advice for this crop disease: "${diseaseName}". Focus on tips suitable for rural Nigerian farmers.`;
+    const prompt = `You are an agricultural expert. Provide a brief, clear, and practical treatment for the crop disease called "${diseaseName}". 
+The treatment should be safe, affordable, and suitable for rural farmers in Nigeria. Mention the crop name too if possible.`;
+
 
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
