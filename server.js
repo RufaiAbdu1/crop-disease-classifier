@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 app.use(express.json());
 
-// Route: POST /classify - Send image to Hugging Face
+//  Crop Disease Classifier
 app.post("/classify", upload.single("image"), async (req, res) => {
   const imagePath = req.file.path;
 
@@ -29,8 +29,7 @@ app.post("/classify", upload.single("image"), async (req, res) => {
       }
     );
 
-    fs.unlinkSync(imagePath); // Clean up uploaded image
-
+    fs.unlinkSync(imagePath); // Cleanup
     res.json(response.data);
   } catch (error) {
     fs.unlinkSync(imagePath);
@@ -41,19 +40,29 @@ app.post("/classify", upload.single("image"), async (req, res) => {
   }
 });
 
-// Route: POST /treatment - Use OpenRouter to generate treatment advice
+// Suggest Treatment using OpenRouter (LLaMA 3)
 app.post("/treatment", async (req, res) => {
-  const { diseaseName } = req.body;
-  const cleanName = diseaseName.replace(/[_]/g, " ").replace(/\s+/g, " ").trim();
+  let { diseaseName } = req.body;
+  diseaseName = diseaseName.replace(/_/g, " ");
 
   try {
-    const prompt = `You are an experienced agricultural extension officer. Provide simple, practical treatment advice for "${cleanName}". Keep it short, local, and relevant to Nigerian farmers.`;
+    const prompt = `You are an agricultural expert. If the disease name is 'Invalid', say "This leaf image could not be identified. Please upload a clearer image of the crop leaf." Otherwise, suggest treatment for the disease: "${diseaseName}".`;
 
-    const response = await axios.post(
+
+    const aiResponse = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "mistralai/mixtral-8x7b",
-        messages: [{ role: "user", content: prompt }],
+        model: "meta-llama/llama-3-8b-instruct",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful agricultural assistant for Nigerian farmers.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
       },
       {
         headers: {
@@ -63,22 +72,17 @@ app.post("/treatment", async (req, res) => {
       }
     );
 
-    let treatment = response.data.choices[0]?.message?.content?.trim();
-    if (!treatment) {
-      treatment = "🧪 Sorry, no treatment suggestion was found. Try another image or crop.";
-    }
-
-    res.json({ treatment });
+    const advice = aiResponse.data.choices[0].message.content;
+    res.json({ treatment: advice });
   } catch (err) {
     res.status(500).json({
-      error: "AI treatment generation failed",
+      error: "Treatment error",
       message: err.message,
     });
   }
 });
 
-
-// Start server
+//  Start the Server
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
