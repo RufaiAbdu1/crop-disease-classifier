@@ -2,121 +2,174 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌾 Crop Disease Classifier</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f0fdf4;
+      background: #f7f9f4;
       margin: 0;
       padding: 20px;
-      text-align: center;
+      color: #333;
     }
-    h1 {
-      color: #157347;
-    }
-    form {
-      margin-top: 20px;
-    }
-    input[type="file"] {
-      margin: 10px 0;
-    }
-    button {
-      background-color: #157347;
+    header {
+      background-color: #4caf50;
       color: white;
-      border: none;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      border-radius: 5px;
+      padding: 15px;
+      text-align: center;
+      border-radius: 10px;
     }
-    button:hover {
-      background-color: #145c3c;
-    }
-    img {
-      max-width: 300px;
-      margin: 10px 0;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-    }
-    .result-box {
-      background: #e9fbe9;
+    main {
+      max-width: 800px;
+      margin: auto;
+      background: white;
       padding: 20px;
       border-radius: 10px;
-      border: 2px solid #c1e1c1;
-      max-width: 600px;
-      margin: 20px auto;
-      text-align: left;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    input[type="file"] {
+      margin-top: 15px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #e8f5e9;
+      border-left: 5px solid #4caf50;
+      border-radius: 5px;
+    }
+    #about, #contact {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 5px;
+    }
+    #about {
+      background-color: #fff8e1;
+      border-left: 5px solid #ffeb3b;
+    }
+    #contact {
+      background-color: #e3f2fd;
+      border-left: 5px solid #2196f3;
+    }
+    .toggle {
+      margin: 10px 0;
+    }
+    #preview {
+      margin-top: 15px;
+      max-width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>🌾 Crop Disease Classifier</h1>
+  <header>
+    <h1>🌾 Crop Disease Classifier</h1>
+    <p>AI-powered tool to detect crop diseases and suggest treatment</p>
+  </header>
 
-  <form id="uploadForm">
-    <input type="file" id="image" accept="image/*" required />
-    <br />
-    <button type="submit">Classify Image</button>
-  </form>
+  <main>
+    <div class="toggle">
+      <label><input type="checkbox" id="toggleLang" onchange="toggleLanguage()"> View in Hausa</label>
+    </div>
 
-  <img id="preview" style="display: none;" />
-  <div id="result" class="result-box"></div>
+    <section id="about">
+      <h2>About the Project</h2>
+      <p id="aboutText">This tool is designed for Nigerian farmers and agricultural advisors. It allows users to upload an image of a crop leaf, identifies the disease using an AI model trained on common crop diseases (like maize rust, rice blast, and potato blight), and then suggests treatment options using real agricultural data from FAO AGRIS and LLaMA 3 AI model via OpenRouter.</p>
+    </section>
+
+    <h2>Select Crop Leaf Image</h2>
+    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)" />
+    <br>
+    <img id="preview" style="display:none" />
+    <br>
+    <button onclick="classifyImage()">Classify Image</button>
+
+    <div id="result"></div>
+
+    <section id="contact">
+      <h2>Contact</h2>
+      <p>If you need support or have suggestions, please contact:</p>
+      <ul>
+        <li><strong>Name:</strong> Rufai Abdullahi Musa</li>
+        <li><strong>Email:</strong> rufaiabdullahi537@gmail.com</li>
+        <li><strong>Phone:</strong> +2348136265350</li>
+      </ul>
+    </section>
+  </main>
 
   <script>
-    document.getElementById("image").addEventListener("change", function (e) {
-      const file = e.target.files[0];
-      const preview = document.getElementById("preview");
-      if (file) {
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = "block";
-      } else {
-        preview.style.display = "none";
+    const langData = {
+      hausa: {
+        about: "Wannan kayan aiki na taimaka wa manoma na Najeriya wajen gano cututtuka a ganyen amfanin gona. Bayan gano cutar, yana bayar da shawarar yadda za a magance ta cikin sauki."
+      },
+      english: {
+        about: "This tool is designed for Nigerian farmers and agricultural advisors. It allows users to upload an image of a crop leaf, identifies the disease using an AI model trained on common crop diseases (like maize rust, rice blast, and potato blight), and then suggests treatment options using real agricultural data from FAO AGRIS and LLaMA 3 AI model via OpenRouter."
       }
-    });
+    };
 
-    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const formData = new FormData();
-      const fileInput = document.getElementById("image");
-      const file = fileInput.files[0];
-      formData.append("image", file);
+    function toggleLanguage() {
+      const isHausa = document.getElementById("toggleLang").checked;
+      document.getElementById("aboutText").innerText = isHausa ? langData.hausa.about : langData.english.about;
+    }
 
+    function previewImage(event) {
+      const image = document.getElementById("preview");
+      image.src = URL.createObjectURL(event.target.files[0]);
+      image.style.display = "block";
+    }
+
+    async function classifyImage() {
+      const input = document.getElementById("imageInput");
       const resultDiv = document.getElementById("result");
-      resultDiv.innerHTML = `
-        <p>🔍 Uploading and analyzing image...</p>
-        <p>🤖 Asking AI for treatment suggestion...</p>
-      `;
+      resultDiv.innerHTML = "⏳ Classifying...";
+
+      const formData = new FormData();
+      formData.append("image", input.files[0]);
 
       try {
-        const res = await fetch("/classify", {
+        const response = await fetch("/classify", {
           method: "POST",
-          body: formData,
+          body: formData
         });
-        const data = await res.json();
+        const data = await response.json();
 
-        const prediction = data[0];
-        const label = prediction.label;
-        const score = (prediction.score * 100).toFixed(2) + "%";
+        if (data.error) throw new Error(data.message);
 
-        const treatmentRes = await fetch("/treatment", {
+        const label = data[0]?.label || "Unknown";
+        const confidence = (data[0]?.score * 100).toFixed(2);
+
+        const resultHTML = `✅ <strong>${label}</strong> (${confidence}%)`;
+        resultDiv.innerHTML = resultHTML;
+
+        // Call treatment endpoint
+        const treatmentResponse = await fetch("/treatment", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ diseaseName: label }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ diseaseName: label })
         });
-        const treatmentData = await treatmentRes.json();
-        const treatment = treatmentData.treatment || "No treatment found.";
+        const treatmentData = await treatmentResponse.json();
+        const advice = treatmentData.treatment || "No treatment found.";
 
-        const previewURL = URL.createObjectURL(file);
+        resultDiv.innerHTML += `<br/><br/>🧪 <strong>Treatment Suggestion:</strong><br/>${advice}`;
 
-        resultDiv.innerHTML = `
-          <img src="${previewURL}" />
-          <p>✅ <strong>${label}</strong> (${score})</p>
-          <p>🧪 <strong>Treatment Suggestion:</strong><br>${treatment}</p>
-        `;
       } catch (err) {
         resultDiv.innerHTML = `❌ Error: ${err.message}`;
       }
-    });
+    }
   </script>
 </body>
 </html>
