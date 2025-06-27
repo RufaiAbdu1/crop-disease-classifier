@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>🌾 Crop Disease Classifier</title>
   <style>
     body {
@@ -85,8 +85,10 @@
     </div>
 
     <section id="about">
-      <h2>About the Project</h2>
-      <p id="aboutText">This tool is designed for Nigerian farmers and agricultural advisors. It allows users to upload an image of a crop leaf, identifies the disease using an AI model trained on common crop diseases (like maize rust, rice blast, and potato blight), and then suggests treatment options using real agricultural data from FAO AGRIS and LLaMA 3 AI model via OpenRouter.</p>
+      <h2>🌾 About This Project</h2>
+      <p id="aboutText">
+        This tool is built to assist Nigerian farmers and agricultural workers. It supports crops like maize, rice, wheat, and potato. Users upload a crop leaf image, and the app identifies diseases such as rust, blast, and blight using a Hugging Face AI model. It then suggests treatment based on real agricultural sources like FAO AGRIS and OpenRouter’s LLaMA 3.
+      </p>
     </section>
 
     <h2>Select Crop Leaf Image</h2>
@@ -110,66 +112,64 @@
   </main>
 
   <script>
-    const langData = {
-      hausa: {
-        about: "Wannan kayan aiki na taimaka wa manoma na Najeriya wajen gano cututtuka a ganyen amfanin gona. Bayan gano cutar, yana bayar da shawarar yadda za a magance ta cikin sauki."
-      },
-      english: {
-        about: "This tool is designed for Nigerian farmers and agricultural advisors. It allows users to upload an image of a crop leaf, identifies the disease using an AI model trained on common crop diseases (like maize rust, rice blast, and potato blight), and then suggests treatment options using real agricultural data from FAO AGRIS and LLaMA 3 AI model via OpenRouter."
-      }
-    };
-
-    function toggleLanguage() {
-      const isHausa = document.getElementById("toggleLang").checked;
-      document.getElementById("aboutText").innerText = isHausa ? langData.hausa.about : langData.english.about;
+  const langData = {
+    hausa: {
+      about: "Wannan manhajan yana taimaka wa manoma na Najeriya wajen gano cututtuka a ganyen amfanin gona kamar su <strong>masara</strong>, <strong>shinkafa</strong>, <strong>alkama</strong> da <strong>dankali</strong>. Bayan gano cutar, yana bayar da saukin fahimtar shawarar yadda za a magance ta ta hanyar amfani da fasahar AI daga OpenRouter da bayanan noma daga FAO AGRIS."
+    },
+    english: {
+      about: "This tool is built to assist Nigerian farmers and agricultural workers. It supports crops like <strong>maize</strong>, <strong>rice</strong>, <strong>wheat</strong>, and <strong>potato</strong>. Users upload a crop leaf image, and the app identifies diseases such as rust, blast, and blight using a Hugging Face AI model. It then suggests treatment based on real agricultural sources like FAO AGRIS and OpenRouter’s LLaMA 3."
     }
+  };
 
-    function previewImage(event) {
-      const image = document.getElementById("preview");
-      image.src = URL.createObjectURL(event.target.files[0]);
-      image.style.display = "block";
+  function toggleLanguage() {
+    const isHausa = document.getElementById("toggleLang").checked;
+    document.getElementById("aboutText").innerHTML = isHausa ? langData.hausa.about : langData.english.about;
+  }
+
+  function previewImage(event) {
+    const image = document.getElementById("preview");
+    image.src = URL.createObjectURL(event.target.files[0]);
+    image.style.display = "block";
+  }
+
+  async function classifyImage() {
+    const input = document.getElementById("imageInput");
+    const resultDiv = document.getElementById("result");
+    resultDiv.innerHTML = "⏳ Classifying...";
+
+    const formData = new FormData();
+    formData.append("image", input.files[0]);
+
+    try {
+      const response = await fetch("/classify", {
+        method: "POST",
+        body: formData
+      });
+      const data = await response.json();
+
+      if (data.error) throw new Error(data.message);
+
+      const label = data[0]?.label || "Unknown";
+      const confidence = (data[0]?.score * 100).toFixed(2);
+      resultDiv.innerHTML = `✅ <strong>${label}</strong> (${confidence}%)`;
+
+      const treatmentResponse = await fetch("/treatment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ diseaseName: label })
+      });
+
+      const treatmentData = await treatmentResponse.json();
+      const advice = treatmentData.treatment || "No treatment found.";
+      resultDiv.innerHTML += `<br/><br/>🧪 <strong>Treatment Suggestion:</strong><br/>${advice}`;
+
+    } catch (err) {
+      resultDiv.innerHTML = `❌ Error: ${err.message}`;
     }
+  }
+</script>
 
-    async function classifyImage() {
-      const input = document.getElementById("imageInput");
-      const resultDiv = document.getElementById("result");
-      resultDiv.innerHTML = "⏳ Classifying...";
-
-      const formData = new FormData();
-      formData.append("image", input.files[0]);
-
-      try {
-        const response = await fetch("/classify", {
-          method: "POST",
-          body: formData
-        });
-        const data = await response.json();
-
-        if (data.error) throw new Error(data.message);
-
-        const label = data[0]?.label || "Unknown";
-        const confidence = (data[0]?.score * 100).toFixed(2);
-
-        const resultHTML = `✅ <strong>${label}</strong> (${confidence}%)`;
-        resultDiv.innerHTML = resultHTML;
-
-        // Call treatment endpoint
-        const treatmentResponse = await fetch("/treatment", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ diseaseName: label })
-        });
-        const treatmentData = await treatmentResponse.json();
-        const advice = treatmentData.treatment || "No treatment found.";
-
-        resultDiv.innerHTML += `<br/><br/>🧪 <strong>Treatment Suggestion:</strong><br/>${advice}`;
-
-      } catch (err) {
-        resultDiv.innerHTML = `❌ Error: ${err.message}`;
-      }
-    }
-  </script>
 </body>
 </html>
