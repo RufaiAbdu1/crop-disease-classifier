@@ -97,6 +97,62 @@ function getGradioClient() {
   return gradioClientPromise;
 }
 
+// ---------- AI vision fallback (OpenRouter) ----------
+// Used automatically if the Hugging Face Space fails. Change the model in Render with VISION_MODEL.
+const VISION_MODEL = process.env.VISION_MODEL || "google/gemini-3.5-flash";
+const TREATMENT_MODEL = process.env.TREATMENT_MODEL || VISION_MODEL;
+
+async function classifyWithVision(imageBuffer, mimetype) {
+  const dataUrl = `data:${mimetype || "image/jpeg"};base64,${imageBuffer.toString("base64")}`;
+  const prompt =
+    "You help smallholder farmers in Nigeria. Look at this crop leaf photo and reply ONLY with JSON, no other text: " +
+    '{"crop": "crop name or Unknown", "condition": "disease name, or Healthy, or Invalid if this is not a plant leaf", "confidence": a number from 0 to 1}. ' +
+    "Be conservative: if the photo is blurry, far away, or you are unsure, use a low confidence.";
+
+  const resp = await axios.post(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      model: VISION_MODEL,
+      temperature: 0,
+      max_tokens: 200,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 60000,
+    }
+  );
+
+  const text = resp.data.choices[0].message.content || "";
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Vision model returned no JSON: " + text.slice(0, 100));
+  const out = JSON.parse(match[0]);
+
+  const condition = String(out.condition || "Invalid").trim();
+  const crop = String(out.crop || "").trim();
+  let score = Number(out.confidence);
+  if (!isFinite(score)) score = 0.3;
+  score = Math.max(0, Math.min(1, score));
+
+  const label = /^invalid$/i.test(condition)
+    ? "Invalid"
+    : crop && !/^unknown$/i.test(crop)
+    ? `${crop} - ${condition}`
+    : condition;
+  return [{ label, score }];
+}
+
 // ---------- 1. Classify the leaf image ----------
 app.post("/classify", (req, res) => {
   upload.single("image")(req, res, async (uploadErr) => {
@@ -116,27 +172,25 @@ app.post("/classify", (req, res) => {
       const image = fs.readFileSync(imagePath);
 
       let predictions = [];
-      if (HF_SPACE) {
+      let source = "model";
+      try {
         const client = await getGradioClient();
         const blob = new Blob([image], { type: req.file.mimetype || "image/jpeg" });
         console.log("Connected to Space, sending image...");
         const result = await Promise.race([
           client.predict("/predict", { image: blob }),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Space did not answer within 80 seconds")), 80000)
+            setTimeout(() => reject(new Error("Space did not answer within 30 seconds")), 30000)
           ),
         ]);
-        console.log("Space answered in", ((Date.now() - startedAt) / 1000).toFixed(1), "s");
         predictions = Array.isArray(result.data && result.data[0]) ? result.data[0] : [];
-      } else {
-        const response = await axios.post(HF_MODEL_URL, image, {
-          headers: {
-            Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-            "Content-Type": "application/octet-stream",
-          },
-          timeout: 60000,
-        });
-        predictions = Array.isArray(response.data) ? response.data : [];
+        if (!predictions.length) throw new Error("Space returned no predictions");
+        console.log("Space answered in", ((Date.now() - startedAt) / 1000).toFixed(1), "s");
+      } catch (spaceErr) {
+        console.error("Space failed, using vision fallback:", spaceErr && spaceErr.message ? spaceErr.message : spaceErr);
+        predictions = await classifyWithVision(image, req.file.mimetype);
+        source = "vision";
+        console.log("Vision fallback answered in", ((Date.now() - startedAt) / 1000).toFixed(1), "s");
       }
       const top = predictions[0];
       const id = crypto.randomUUID();
@@ -147,10 +201,11 @@ app.post("/classify", (req, res) => {
           time: new Date().toISOString(),
           label: top.label,
           confidence: top.score,
+          source,
         });
       }
 
-      res.json({ id, predictions });
+      res.json({ id, predictions, source });
     } catch (error) {
       const status = error.response && error.response.status;
       if (status === 503) {
@@ -192,7 +247,7 @@ app.post("/treatment", async (req, res) => {
     const aiResponse = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "meta-llama/llama-3-8b-instruct",
+        model: TREATMENT_MODEL,
         temperature: 0.3,
         max_tokens: 450,
         messages: [
@@ -268,11 +323,11 @@ app.get("/export.csv", requireAdmin, (req, res) => {
   const latestFeedback = new Map();
   readLog(FEEDBACK_LOG).forEach((f) => latestFeedback.set(f.id, f.correct));
 
-  const rows = ["id,time,diagnosis,confidence,farmer_said_correct"];
+  const rows = ["id,time,diagnosis,confidence,source,farmer_said_correct"];
   classifications.forEach((c) => {
     const fb = latestFeedback.has(c.id) ? (latestFeedback.get(c.id) ? "yes" : "no") : "";
     const label = String(c.label).replace(/"/g, '""');
-    rows.push(`${c.id},${c.time},"${label}",${(c.confidence * 100).toFixed(1)},${fb}`);
+    rows.push(`${c.id},${c.time},"${label}",${(c.confidence * 100).toFixed(1)},${c.source || "model"},${fb}`);
   });
 
   res.setHeader("Content-Type", "text/csv");
