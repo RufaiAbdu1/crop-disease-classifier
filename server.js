@@ -22,6 +22,17 @@ const HF_MODEL_URL =
   process.env.HF_MODEL_URL ||
   "https://api-inference.huggingface.co/models/wambugu71/crop_leaf_diseases_vit";
 
+const DEFAULT_SPACE = "RufaiAbdu/easifarm-classifier";
+const rawSpace = String(process.env.HF_SPACE || "").trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+const HF_SPACE = /^[\w.-]+\/[\w.-]+$/.test(rawSpace) || /^https:\/\/[^\s]+$/.test(rawSpace)
+  ? rawSpace
+  : DEFAULT_SPACE;
+console.log("Using Space:", HF_SPACE, "| env value was:", JSON.stringify(process.env.HF_SPACE));
+console.log(
+  "HF token present:", Boolean(process.env.HUGGINGFACE_API_KEY),
+  "| starts with hf_:", String(process.env.HUGGINGFACE_API_KEY || "").startsWith("hf_")
+);
+
 const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
@@ -76,7 +87,7 @@ function getGradioClient() {
   if (!gradioClientPromise) {
     gradioClientPromise = import("@gradio/client")
       .then(({ Client }) =>
-        Client.connect(process.env.HF_SPACE, { hf_token: process.env.HUGGINGFACE_API_KEY })
+        Client.connect(HF_SPACE, { hf_token: process.env.HUGGINGFACE_API_KEY })
       )
       .catch((e) => {
         gradioClientPromise = null; // allow a retry on the next request
@@ -85,11 +96,6 @@ function getGradioClient() {
   }
   return gradioClientPromise;
 }
-console.log(
-  "HF token present:", Boolean(process.env.HUGGINGFACE_API_KEY),
-  "| starts with hf_:", String(process.env.HUGGINGFACE_API_KEY || "").startsWith("hf_"),
-  "| Space:", process.env.HF_SPACE
-);
 
 // ---------- 1. Classify the leaf image ----------
 app.post("/classify", (req, res) => {
@@ -108,7 +114,7 @@ app.post("/classify", (req, res) => {
       const image = fs.readFileSync(imagePath);
 
       let predictions = [];
-      if (process.env.HF_SPACE) {
+      if (HF_SPACE) {
         const client = await getGradioClient();
         const blob = new Blob([image], { type: req.file.mimetype || "image/jpeg" });
         const result = await client.predict("/predict", { image: blob });
@@ -144,7 +150,7 @@ app.post("/classify", (req, res) => {
           message: "The AI model is waking up. Please try again in 20 seconds.",
         });
       }
-      console.error("Classify error:", error && error.message ? error.message : error);
+      console.error("Classify error:", error && error.stack ? error.stack : error);
       res.status(500).json({
         error: "Failed to classify image",
         message: "Could not classify this image right now. Please try again.",
