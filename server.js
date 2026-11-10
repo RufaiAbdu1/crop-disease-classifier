@@ -20,7 +20,8 @@ const FEEDBACK_LOG = path.join(DATA_DIR, "feedback.jsonl");
 
 const HF_MODEL_URL =
   process.env.HF_MODEL_URL ||
-  "https://api-inference.huggingface.co/models/wambugu71/crop_leaf_diseases_vit";
+  "https://router.huggingface.co/hf-inference/models/wambugu71/crop_leaf_diseases_vit";
+console.log("Using model URL:", HF_MODEL_URL);
 
 const upload = multer({
   dest: UPLOAD_DIR,
