@@ -144,7 +144,7 @@ app.post("/classify", (req, res) => {
           message: "The AI model is waking up. Please try again in 20 seconds.",
         });
       }
-      console.error("Classify error:", error.message);
+      console.error("Classify error:", error && error.message ? error.message : error);
       res.status(500).json({
         error: "Failed to classify image",
         message: "Could not classify this image right now. Please try again.",
