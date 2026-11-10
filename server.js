@@ -1,88 +1,31 @@
-require("dotenv").config();
-const express = require("express");
-const multer = require("multer");
-const axios = require("axios");
-const fs = require("fs");
-
-const app = express();
-const upload = multer({ dest: "uploads/" });
-const PORT = process.env.PORT || 3000;
-
-app.use(express.static("public"));
-app.use(express.json());
-
-//  Crop Disease Classifier
-app.post("/classify", upload.single("image"), async (req, res) => {
-  const imagePath = req.file.path;
-
-  try {
-    const image = fs.readFileSync(imagePath);
-
-    const response = await axios.post(
-      "https://api-inference.huggingface.co/models/wambugu71/crop_leaf_diseases_vit",
-      image,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/octet-stream",
-        },
-      }
-    );
-
-    fs.unlinkSync(imagePath); // Cleanup
-    res.json(response.data);
-  } catch (error) {
-    fs.unlinkSync(imagePath);
-    res.status(500).json({
-      error: "Failed to classify image",
-      message: error.message,
-    });
-  }
+  res.json({
+    totalChecks: classifications.length,
+    feedbackReceived: answered,
+    markedCorrect: correctCount,
+    markedWrong: answered - correctCount,
+    percentCorrectOfAnswered: answered ? Math.round((correctCount / answered) * 100) : null,
+    checksByDiagnosis: byLabel,
+  });
 });
 
-// Suggest Treatment using OpenRouter (LLaMA 3)
-app.post("/treatment", async (req, res) => {
-  let { diseaseName } = req.body;
-  diseaseName = diseaseName.replace(/_/g, " ");
+app.get("/export.csv", requireAdmin, (req, res) => {
+  const classifications = readLog(CLASSIFY_LOG);
+  const latestFeedback = new Map();
+  readLog(FEEDBACK_LOG).forEach((f) => latestFeedback.set(f.id, f.correct));
 
-  try {
-    const prompt = `You are an agricultural expert. If the disease name is 'Invalid', say "This leaf image could not be identified. Please upload a clearer image of the crop leaf." Otherwise, suggest treatment for the disease: "${diseaseName}".`;
+  const rows = ["id,time,diagnosis,confidence,farmer_said_correct"];
+  classifications.forEach((c) => {
+    const fb = latestFeedback.has(c.id) ? (latestFeedback.get(c.id) ? "yes" : "no") : "";
+    const label = String(c.label).replace(/"/g, '""');
+    rows.push(`${c.id},${c.time},"${label}",${(c.confidence * 100).toFixed(1)},${fb}`);
+  });
 
-
-    const aiResponse = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "meta-llama/llama-3-8b-instruct",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful agricultural assistant for Nigerian farmers.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const advice = aiResponse.data.choices[0].message.content;
-    res.json({ treatment: advice });
-  } catch (err) {
-    res.status(500).json({
-      error: "Treatment error",
-      message: err.message,
-    });
-  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=easifarm-pilot.csv");
+  res.send(rows.join("\n"));
 });
 
-//  Start the Server
+// ---------- Start ----------
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
