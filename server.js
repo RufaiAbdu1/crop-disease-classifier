@@ -110,6 +110,8 @@ app.post("/classify", (req, res) => {
     }
 
     const imagePath = req.file.path;
+    const startedAt = Date.now();
+    console.log("Classify request received:", req.file.mimetype, req.file.size, "bytes");
     try {
       const image = fs.readFileSync(imagePath);
 
@@ -117,7 +119,14 @@ app.post("/classify", (req, res) => {
       if (HF_SPACE) {
         const client = await getGradioClient();
         const blob = new Blob([image], { type: req.file.mimetype || "image/jpeg" });
-        const result = await client.predict("/predict", { image: blob });
+        console.log("Connected to Space, sending image...");
+        const result = await Promise.race([
+          client.predict("/predict", { image: blob }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Space did not answer within 80 seconds")), 80000)
+          ),
+        ]);
+        console.log("Space answered in", ((Date.now() - startedAt) / 1000).toFixed(1), "s");
         predictions = Array.isArray(result.data && result.data[0]) ? result.data[0] : [];
       } else {
         const response = await axios.post(HF_MODEL_URL, image, {
