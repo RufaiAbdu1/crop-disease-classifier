@@ -20,8 +20,7 @@ const FEEDBACK_LOG = path.join(DATA_DIR, "feedback.jsonl");
 
 const HF_MODEL_URL =
   process.env.HF_MODEL_URL ||
-  "https://router.huggingface.co/hf-inference/models/wambugu71/crop_leaf_diseases_vit";
-console.log("Using model URL:", HF_MODEL_URL);
+  "https://api-inference.huggingface.co/models/wambugu71/crop_leaf_diseases_vit";
 
 const upload = multer({
   dest: UPLOAD_DIR,
@@ -71,6 +70,22 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Connects to a Hugging Face Space (Gradio) when HF_SPACE is set, e.g. "yourname/easifarm-classifier"
+let gradioClientPromise = null;
+function getGradioClient() {
+  if (!gradioClientPromise) {
+    gradioClientPromise = import("@gradio/client")
+      .then(({ Client }) =>
+        Client.connect(process.env.HF_SPACE, { hf_token: process.env.HUGGINGFACE_API_KEY })
+      )
+      .catch((e) => {
+        gradioClientPromise = null; // allow a retry on the next request
+        throw e;
+      });
+  }
+  return gradioClientPromise;
+}
+
 // ---------- 1. Classify the leaf image ----------
 app.post("/classify", (req, res) => {
   upload.single("image")(req, res, async (uploadErr) => {
@@ -87,15 +102,22 @@ app.post("/classify", (req, res) => {
     try {
       const image = fs.readFileSync(imagePath);
 
-      const response = await axios.post(HF_MODEL_URL, image, {
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/octet-stream",
-        },
-        timeout: 60000,
-      });
-
-      const predictions = Array.isArray(response.data) ? response.data : [];
+      let predictions = [];
+      if (process.env.HF_SPACE) {
+        const client = await getGradioClient();
+        const blob = new Blob([image], { type: req.file.mimetype || "image/jpeg" });
+        const result = await client.predict("/predict", { image: blob });
+        predictions = Array.isArray(result.data && result.data[0]) ? result.data[0] : [];
+      } else {
+        const response = await axios.post(HF_MODEL_URL, image, {
+          headers: {
+            Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+            "Content-Type": "application/octet-stream",
+          },
+          timeout: 60000,
+        });
+        predictions = Array.isArray(response.data) ? response.data : [];
+      }
       const top = predictions[0];
       const id = crypto.randomUUID();
 
