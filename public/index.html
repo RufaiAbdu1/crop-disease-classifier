@@ -2,174 +2,523 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🌾 Crop Disease Classifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EasiFarm – Crop Disease Check</title>
   <style>
+    :root {
+      --ink: #1d2b1b;
+      --field: #2f6b35;
+      --field-dark: #25562a;
+      --grain: #e2b04a;
+      --sage: #edf1e6;
+      --paper: #ffffff;
+      --line: #cfd8c4;
+      --warn-bg: #fff4d6;
+      --warn-line: #e2b04a;
+      --bad: #a33a2a;
+    }
+    * { box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
-      background: #f7f9f4;
       margin: 0;
-      padding: 20px;
-      color: #333;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--sage);
+      color: var(--ink);
+      line-height: 1.5;
     }
-    header {
-      background-color: #4caf50;
-      color: white;
-      padding: 15px;
-      text-align: center;
-      border-radius: 10px;
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px 40px; }
+
+    header { padding: 20px 0 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    header h1 { margin: 0; font-size: 1.6rem; color: var(--field-dark); }
+    header p { margin: 2px 0 0; font-size: 0.95rem; }
+    .byline { font-size: 0.8rem; color: #55664f; }
+    .lang { font-size: 0.9rem; white-space: nowrap; padding-top: 6px; }
+    .lang input { margin-right: 6px; }
+
+    nav { display: flex; gap: 4px; border-bottom: 2px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+    nav button {
+      flex: 1 0 auto;
+      background: none; border: none; padding: 10px 12px;
+      font: inherit; font-weight: 600; color: #55664f; cursor: pointer;
+      border-bottom: 3px solid transparent; margin-bottom: -2px;
     }
-    main {
-      max-width: 800px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    nav button[aria-selected="true"] { color: var(--field-dark); border-bottom-color: var(--grain); }
+
+    :focus-visible { outline: 3px solid var(--grain); outline-offset: 2px; }
+
+    section.panel { display: none; }
+    section.panel.active { display: block; }
+
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+    .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+
+    .tips { background: var(--warn-bg); border-left: 4px solid var(--warn-line); border-radius: 4px; padding: 10px 12px; font-size: 0.92rem; margin-bottom: 14px; }
+
+    input[type="file"] { width: 100%; padding: 10px 0; }
+    #preview { display: none; width: 100%; max-height: 300px; object-fit: contain; border-radius: 6px; border: 1px solid var(--line); margin: 8px 0; background: #f4f6f0; }
+
+    .btn {
+      display: inline-block; padding: 12px 18px; border: none; border-radius: 6px;
+      background: var(--field); color: #fff; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; text-align: center;
     }
-    input[type="file"] {
-      margin-top: 15px;
-    }
-    button {
-      margin-top: 15px;
-      padding: 10px 20px;
-      background-color: #4caf50;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #45a049;
-    }
-    #result {
-      margin-top: 20px;
-      padding: 15px;
-      background-color: #e8f5e9;
-      border-left: 5px solid #4caf50;
-      border-radius: 5px;
-    }
-    #about, #contact {
-      margin-top: 30px;
-      padding: 20px;
-      border-radius: 5px;
-    }
-    #about {
-      background-color: #fff8e1;
-      border-left: 5px solid #ffeb3b;
-    }
-    #contact {
-      background-color: #e3f2fd;
-      border-left: 5px solid #2196f3;
-    }
-    .toggle {
-      margin: 10px 0;
-    }
-    #preview {
-      margin-top: 15px;
-      max-width: 100%;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
+    .btn:hover { background: var(--field-dark); }
+    .btn:disabled { background: #8aa58c; cursor: not-allowed; }
+    .btn.secondary { background: #fff; color: var(--field-dark); border: 2px solid var(--field); padding: 10px 16px; }
+    .btn.whatsapp { background: #1f8f4e; }
+    .btn.block { display: block; width: 100%; }
+
+    #result { margin-top: 16px; }
+    .diagnosis { font-size: 1.25rem; font-weight: 700; margin: 0; }
+    .meter { height: 10px; background: #e3e8dc; border-radius: 5px; margin: 8px 0 2px; overflow: hidden; }
+    .meter span { display: block; height: 100%; background: var(--field); }
+    .conf { font-size: 0.85rem; color: #55664f; margin: 0 0 10px; }
+    .unsure { background: var(--warn-bg); border-left: 4px solid var(--warn-line); padding: 12px; border-radius: 4px; }
+    .error { color: var(--bad); font-weight: 600; }
+    .advice { white-space: pre-wrap; margin: 8px 0 0; }
+    .disclaimer { font-size: 0.85rem; color: #55664f; margin-top: 10px; }
+    .feedback { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .feedback .btn { padding: 8px 16px; }
+    .actions { display: grid; gap: 8px; margin-top: 14px; }
+
+    .wx-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+    .wx-day { background: var(--sage); border-radius: 6px; padding: 8px; text-align: center; font-size: 0.9rem; }
+    .wx-day strong { display: block; }
+    .wx-note { background: var(--warn-bg); border-left: 4px solid var(--warn-line); padding: 10px 12px; border-radius: 4px; margin-top: 8px; }
+
+    footer { font-size: 0.8rem; color: #55664f; text-align: center; margin-top: 24px; }
+    @media (max-width: 400px) { header { flex-direction: column; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>🌾 Crop Disease Classifier</h1>
-    <p>AI-powered tool to detect crop diseases and suggest treatment</p>
-  </header>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>EasiFarm</h1>
+        <p data-i18n="tagline">Check your crop and get advice</p>
+        <div class="byline">by Ramify Tech Solutions</div>
+      </div>
+      <label class="lang"><input type="checkbox" id="toggleLang" /><span data-i18n="viewHausa">View in Hausa</span></label>
+    </header>
 
-  <main>
-    <div class="toggle">
-      <label><input type="checkbox" id="toggleLang" onchange="toggleLanguage()"> View in Hausa</label>
-    </div>
+    <nav role="tablist">
+      <button role="tab" data-tab="check" aria-selected="true" data-i18n="tabCheck">Check crop</button>
+      <button role="tab" data-tab="weather" aria-selected="false" data-i18n="tabWeather">Weather</button>
+      <button role="tab" data-tab="expert" aria-selected="false" data-i18n="tabExpert">Find an expert</button>
+      <button role="tab" data-tab="market" aria-selected="false" data-i18n="tabMarket">Marketplace</button>
+    </nav>
 
-    <section id="about">
-      <h2>🌾 About This Project</h2>
-      <p id="aboutText">
-        This tool is built to assist Nigerian farmers and agricultural workers. It supports crops like maize, rice, wheat, and potato. Users upload a crop leaf image, and the app identifies diseases such as rust, blast, and blight using a Hugging Face AI model. It then suggests treatment based on real agricultural sources like FAO AGRIS and OpenRouter’s LLaMA 3.
-      </p>
+    <!-- CHECK CROP -->
+    <section class="panel active" id="panel-check">
+      <div class="tips" data-i18n="photoTips">Photo tips: take one leaf, close up, in daylight. Keep fingers and shadows out of the picture.</div>
+
+      <div class="card">
+        <h2 data-i18n="selectPhoto">Choose a leaf photo</h2>
+        <input type="file" id="imageInput" accept="image/*" />
+        <img id="preview" alt="" />
+        <button class="btn block" id="classifyBtn" data-i18n="checkBtn">Check for disease</button>
+        <div id="result" aria-live="polite"></div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="aboutTitle">About this tool</h2>
+        <p data-i18n="aboutText">EasiFarm looks at a photo of a crop leaf and suggests which disease it may have. The model covers maize, rice, wheat and potato. Treatment advice is written by AI and may contain mistakes, so confirm with an agricultural extension officer before using any chemical.</p>
+      </div>
     </section>
 
-    <h2>Select Crop Leaf Image</h2>
-    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)" />
-    <br>
-    <img id="preview" style="display:none" />
-    <br>
-    <button onclick="classifyImage()">Classify Image</button>
-
-    <div id="result"></div>
-
-    <section id="contact">
-      <h2>Contact</h2>
-      <p>If you need support or have suggestions, please contact:</p>
-      <ul>
-        <li><strong>Name:</strong> Rufai Abdullahi Musa</li>
-        <li><strong>Email:</strong> rufaiabdullahi537@gmail.com</li>
-        <li><strong>Phone:</strong> +2348136265350</li>
-      </ul>
+    <!-- WEATHER -->
+    <section class="panel" id="panel-weather">
+      <div class="card">
+        <h2 data-i18n="weatherTitle">Weather in Gombe</h2>
+        <div id="weatherBody" data-i18n="loading">Loading...</div>
+      </div>
     </section>
-  </main>
 
-  <script>
-  const langData = {
-    hausa: {
-      about: "Wannan manhajan yana taimaka wa manoma na Najeriya wajen gano cututtuka a ganyen amfanin gona kamar su <strong>masara</strong>, <strong>shinkafa</strong>, <strong>alkama</strong> da <strong>dankali</strong>. Bayan gano cutar, yana bayar da saukin fahimtar shawarar yadda za a magance ta ta hanyar amfani da fasahar AI daga OpenRouter da bayanan noma daga FAO AGRIS."
-    },
-    english: {
-      about: "This tool is built to assist Nigerian farmers and agricultural workers. It supports crops like <strong>maize</strong>, <strong>rice</strong>, <strong>wheat</strong>, and <strong>potato</strong>. Users upload a crop leaf image, and the app identifies diseases such as rust, blast, and blight using a Hugging Face AI model. It then suggests treatment based on real agricultural sources like FAO AGRIS and OpenRouter’s LLaMA 3."
-    }
+    <!-- EXPERT -->
+    <section class="panel" id="panel-expert">
+      <div class="card">
+        <h2 data-i18n="expertTitle">Talk to an expert</h2>
+        <p data-i18n="expertText">Send us a message on WhatsApp. Add a photo of the plant and tell us the crop and how long the problem has been there.</p>
+        <a class="btn whatsapp block" id="expertLink" target="_blank" rel="noopener" data-i18n="expertBtn">Open WhatsApp</a>
+      </div>
+    </section>
+
+    <!-- MARKETPLACE -->
+    <section class="panel" id="panel-market">
+      <div class="card">
+        <h2 data-i18n="marketTitle">Marketplace is coming soon</h2>
+        <p data-i18n="marketText">We are building a way for farmers to list produce and reach buyers. Tell us what you grow and sell, and we will build it around your needs.</p>
+        <a class="btn secondary block" id="marketLink" target="_blank" rel="noopener" data-i18n="marketBtn">Tell us what you sell</a>
+      </div>
+    </section>
+
+    <footer>EasiFarm by Ramify Tech Solutions</footer>
+  </div>
+
+<script>
+  // ---------- Settings: change these ----------
+  const CONFIG = {
+    whatsapp: "2348136265350",   // number with country code, no + sign. Replace with your expert's number if different.
+    lowConfidence: 0.6,          // below this, ask for a clearer photo instead of showing a diagnosis
+    lat: 10.2897, lon: 11.1673,  // Gombe
   };
 
-  function toggleLanguage() {
-    const isHausa = document.getElementById("toggleLang").checked;
-    document.getElementById("aboutText").innerHTML = isHausa ? langData.hausa.about : langData.english.about;
+  // ---------- Text (English / Hausa) ----------
+  // Hausa text should be checked by a native speaker before you submit.
+  const T = {
+    en: {
+      tagline: "Check your crop and get advice",
+      viewHausa: "View in Hausa",
+      tabCheck: "Check crop", tabWeather: "Weather", tabExpert: "Find an expert", tabMarket: "Marketplace",
+      photoTips: "Photo tips: take one leaf, close up, in daylight. Keep fingers and shadows out of the picture.",
+      selectPhoto: "Choose a leaf photo",
+      checkBtn: "Check for disease",
+      aboutTitle: "About this tool",
+      aboutText: "EasiFarm looks at a photo of a crop leaf and suggests which disease it may have. The model covers maize, rice, wheat and potato. Treatment advice is written by AI and may contain mistakes, so confirm with an agricultural extension officer before using any chemical.",
+      weatherTitle: "Weather in Gombe",
+      loading: "Loading...",
+      expertTitle: "Talk to an expert",
+      expertText: "Send us a message on WhatsApp. Add a photo of the plant and tell us the crop and how long the problem has been there.",
+      expertBtn: "Open WhatsApp",
+      marketTitle: "Marketplace is coming soon",
+      marketText: "We are building a way for farmers to list produce and reach buyers. Tell us what you grow and sell, and we will build it around your needs.",
+      marketBtn: "Tell us what you sell",
+      noImage: "Please choose a leaf photo first.",
+      checking: "Checking your photo...",
+      gettingAdvice: "Getting treatment advice...",
+      unsure: "We are not sure what this is. Take a clearer, closer photo of one leaf in daylight and try again.",
+      bestGuess: "Best guess",
+      confidence: "Confidence",
+      treatment: "Treatment advice",
+      disclaimer: "This advice is written by AI. Check with an agricultural extension officer before using any chemical.",
+      wasCorrect: "Was this correct?",
+      yes: "Yes", no: "No",
+      thanks: "Thank you for your feedback.",
+      askExpert: "Ask an expert about this",
+      tryAgainMsg: "Something went wrong. Please try again.",
+      today: "Today", rainChance: "Rain chance", humidity: "Humidity",
+      wxRisk: "Wet, humid weather helps fungal diseases spread. Check your leaves often and remove badly infected ones.",
+      wxOk: "Conditions are drier today. Keep checking your crop regularly.",
+      wxFail: "Could not load the weather. Check your connection and try again.",
+      expertMsg: "Hello, I need help with my crop.",
+      marketMsg: "Hello, I would like to sell the following produce on EasiFarm: ",
+    },
+    ha: {
+      tagline: "Duba amfanin gonarka, ka sami shawara",
+      viewHausa: "Duba da Hausa",
+      tabCheck: "Duba amfanin gona", tabWeather: "Yanayi", tabExpert: "Nemi ƙwararre", tabMarket: "Kasuwa",
+      photoTips: "Shawarar ɗaukar hoto: ɗauki ganye ɗaya a kusa, a cikin haske. Kada hannu ko inuwa su shiga hoton.",
+      selectPhoto: "Zaɓi hoton ganye",
+      checkBtn: "Duba cuta",
+      aboutTitle: "Game da wannan manhaja",
+      aboutText: "EasiFarm tana duba hoton ganyen amfanin gona ta nuna cutar da zai iya samu. Tana aiki a kan masara, shinkafa, alkama da dankali. AI ce ke rubuta shawarar magani, don haka tana iya yin kuskure. Ka tuntuɓi jami'in ƙarin ilimin noma kafin ka yi amfani da kowane sinadari.",
+      weatherTitle: "Yanayi a Gombe",
+      loading: "Ana lodawa...",
+      expertTitle: "Yi magana da ƙwararre",
+      expertText: "Aiko mana saƙo ta WhatsApp. Ƙara hoton shukar, ka gaya mana irin amfanin gonar da kuma tsawon lokacin da matsalar ta ɗauka.",
+      expertBtn: "Buɗe WhatsApp",
+      marketTitle: "Kasuwa tana zuwa nan ba da daɗewa ba",
+      marketText: "Muna gina hanyar da manoma za su sa kayan amfanin gonarsu su samu masu saye. Gaya mana abin da kake nomawa da sayarwa.",
+      marketBtn: "Gaya mana abin da kake sayarwa",
+      noImage: "Da farko zaɓi hoton ganye.",
+      checking: "Ana duba hotonka...",
+      gettingAdvice: "Ana nemo shawarar magani...",
+      unsure: "Ba mu da tabbas ko menene wannan. Ɗauki hoto mai haske, a kusa, na ganye ɗaya, sai ka sake gwadawa.",
+      bestGuess: "Zato mafi kusa",
+      confidence: "Tabbaci",
+      treatment: "Shawarar magani",
+      disclaimer: "AI ce ta rubuta wannan shawara. Ka tuntuɓi jami'in ƙarin ilimin noma kafin ka yi amfani da kowane sinadari.",
+      wasCorrect: "Shin wannan daidai ne?",
+      yes: "Ee", no: "A'a",
+      thanks: "Mun gode da ra'ayinka.",
+      askExpert: "Tambayi ƙwararre game da wannan",
+      tryAgainMsg: "An samu matsala. Da fatan za a sake gwadawa.",
+      today: "Yau", rainChance: "Yiwuwar ruwan sama", humidity: "Danshi",
+      wxRisk: "Yanayi mai ruwa da danshi yana taimaka wa cututtukan fungi su yaɗu. Ka riƙa duba ganyenka, ka cire waɗanda cutar ta yi wa illa sosai.",
+      wxOk: "Yanayin yau ya fi bushewa. Ka ci gaba da duba amfanin gonarka akai-akai.",
+      wxFail: "Ba a iya ɗaukar yanayi ba. Ka duba intanet ɗinka ka sake gwadawa.",
+      expertMsg: "Barka dai, ina buƙatar taimako game da amfanin gonata.",
+      marketMsg: "Barka dai, ina so in sayar da waɗannan kayan amfanin gona ta EasiFarm: ",
+    },
+  };
+
+  let lang = "en";
+  let lastDiagnosis = "";
+  let lastResult = null; // { id, label, confidence }
+  let weatherData = null;
+
+  const t = (k) => T[lang][k];
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Language ----------
+  function applyLanguage() {
+    document.documentElement.lang = lang === "ha" ? "ha" : "en";
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      if (el.id === "weatherBody" && weatherData) return;
+      el.textContent = t(el.dataset.i18n);
+    });
+    updateExpertLinks();
+    if (weatherData) renderWeather();
+    if (lastResult) renderResult(); // re-render result in the new language
   }
 
-  function previewImage(event) {
-    const image = document.getElementById("preview");
-    image.src = URL.createObjectURL(event.target.files[0]);
-    image.style.display = "block";
+  $("toggleLang").addEventListener("change", (e) => {
+    lang = e.target.checked ? "ha" : "en";
+    try { localStorage.setItem("easifarm-lang", lang); } catch (_) {}
+    applyLanguage();
+    if (lastResult && lastResult.confidence >= CONFIG.lowConfidence) fetchTreatment();
+  });
+
+  // ---------- Tabs ----------
+  document.querySelectorAll("nav button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", "false"));
+      btn.setAttribute("aria-selected", "true");
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+      $("panel-" + btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "weather" && !weatherData) loadWeather();
+    });
+  });
+
+  // ---------- WhatsApp links ----------
+  function waLink(message) {
+    return "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(message);
   }
+  function updateExpertLinks() {
+    let msg = t("expertMsg");
+    if (lastResult) {
+      msg += " " + prettyLabel(lastResult.label) + " (" + Math.round(lastResult.confidence * 100) + "%)";
+    }
+    $("expertLink").href = waLink(msg);
+    $("marketLink").href = waLink(t("marketMsg"));
+  }
+
+  // ---------- Photo preview ----------
+  $("imageInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    const img = $("preview");
+    if (!file) { img.style.display = "none"; return; }
+    img.src = URL.createObjectURL(file);
+    img.style.display = "block";
+  });
+
+  const prettyLabel = (l) => String(l || "").replace(/_/g, " ");
+
+  // ---------- Classification ----------
+  $("classifyBtn").addEventListener("click", classifyImage);
 
   async function classifyImage() {
-    const input = document.getElementById("imageInput");
-    const resultDiv = document.getElementById("result");
-    resultDiv.innerHTML = "⏳ Classifying...";
+    const file = $("imageInput").files[0];
+    const resultDiv = $("result");
+    if (!file) {
+      resultDiv.innerHTML = "";
+      resultDiv.appendChild(msgEl(t("noImage"), "error"));
+      return;
+    }
 
-    const formData = new FormData();
-    formData.append("image", input.files[0]);
+    const btn = $("classifyBtn");
+    btn.disabled = true;
+    lastResult = null;
+    resultDiv.innerHTML = "";
+    resultDiv.appendChild(msgEl(t("checking")));
 
     try {
-      const response = await fetch("/classify", {
-        method: "POST",
-        body: formData
-      });
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await fetch("/classify", { method: "POST", body: formData });
       const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.message || t("tryAgainMsg"));
 
-      if (data.error) throw new Error(data.message);
+      const top = data.predictions && data.predictions[0];
+      if (!top) throw new Error(t("tryAgainMsg"));
 
-      const label = data[0]?.label || "Unknown";
-      const confidence = (data[0]?.score * 100).toFixed(2);
-      resultDiv.innerHTML = `✅ <strong>${label}</strong> (${confidence}%)`;
+      lastResult = { id: data.id, label: top.label, confidence: top.score, advice: null, feedbackDone: false };
+      renderResult();
+      updateExpertLinks();
 
-      const treatmentResponse = await fetch("/treatment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ diseaseName: label })
-      });
-
-      const treatmentData = await treatmentResponse.json();
-      const advice = treatmentData.treatment || "No treatment found.";
-      resultDiv.innerHTML += `<br/><br/>🧪 <strong>Treatment Suggestion:</strong><br/>${advice}`;
-
+      if (top.score >= CONFIG.lowConfidence) await fetchTreatment();
     } catch (err) {
-      resultDiv.innerHTML = `❌ Error: ${err.message}`;
+      resultDiv.innerHTML = "";
+      resultDiv.appendChild(msgEl(err.message || t("tryAgainMsg"), "error"));
+    } finally {
+      btn.disabled = false;
     }
   }
-</script>
 
+  async function fetchTreatment() {
+    if (!lastResult) return;
+    const current = lastResult;
+    current.advice = null;
+    current.adviceLoading = true;
+    renderResult();
+    try {
+      const r = await fetch("/treatment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diseaseName: current.label, lang }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.message || t("tryAgainMsg"));
+      current.advice = String(d.treatment || "").replace(/\*\*/g, "").replace(/^#+\s*/gm, "");
+    } catch (err) {
+      current.adviceError = err.message || t("tryAgainMsg");
+    }
+    current.adviceLoading = false;
+    if (lastResult === current) renderResult();
+  }
+
+  function msgEl(text, cls) {
+    const p = document.createElement("p");
+    if (cls) p.className = cls;
+    p.textContent = text;
+    return p;
+  }
+
+  function renderResult() {
+    const box = $("result");
+    box.innerHTML = "";
+    if (!lastResult) return;
+    const r = lastResult;
+    const pct = Math.round(r.confidence * 100);
+
+    if (r.confidence < CONFIG.lowConfidence) {
+      const u = document.createElement("div");
+      u.className = "unsure";
+      u.appendChild(msgEl(t("unsure")));
+      u.appendChild(msgEl(t("bestGuess") + ": " + prettyLabel(r.label) + " (" + pct + "%)", "conf"));
+      box.appendChild(u);
+    } else {
+      const h = document.createElement("p");
+      h.className = "diagnosis";
+      h.textContent = prettyLabel(r.label);
+      box.appendChild(h);
+
+      const meter = document.createElement("div");
+      meter.className = "meter";
+      const bar = document.createElement("span");
+      bar.style.width = pct + "%";
+      meter.appendChild(bar);
+      box.appendChild(meter);
+      box.appendChild(msgEl(t("confidence") + ": " + pct + "%", "conf"));
+
+      if (r.adviceLoading) {
+        box.appendChild(msgEl(t("gettingAdvice")));
+      } else if (r.adviceError) {
+        box.appendChild(msgEl(r.adviceError, "error"));
+      } else if (r.advice) {
+        const title = document.createElement("strong");
+        title.textContent = t("treatment");
+        box.appendChild(title);
+        box.appendChild(msgEl(r.advice, "advice"));
+        box.appendChild(msgEl(t("disclaimer"), "disclaimer"));
+      }
+
+      // Feedback
+      const fb = document.createElement("div");
+      fb.className = "feedback";
+      if (r.feedbackDone) {
+        fb.appendChild(msgEl(t("thanks")));
+      } else {
+        const q = document.createElement("span");
+        q.textContent = t("wasCorrect");
+        fb.appendChild(q);
+        [["yes", true], ["no", false]].forEach(([key, value]) => {
+          const b = document.createElement("button");
+          b.className = "btn secondary";
+          b.textContent = t(key);
+          b.addEventListener("click", () => sendFeedback(value));
+          fb.appendChild(b);
+        });
+      }
+      box.appendChild(fb);
+    }
+
+    // Expert button
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const ask = document.createElement("a");
+    ask.className = "btn whatsapp";
+    ask.target = "_blank";
+    ask.rel = "noopener";
+    ask.href = $("expertLink").href;
+    ask.textContent = t("askExpert");
+    actions.appendChild(ask);
+    box.appendChild(actions);
+  }
+
+  async function sendFeedback(correct) {
+    if (!lastResult) return;
+    lastResult.feedbackDone = true;
+    renderResult();
+    try {
+      await fetch("/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: lastResult.id, correct }),
+      });
+    } catch (_) { /* feedback is best-effort */ }
+  }
+
+  // ---------- Weather (Open-Meteo, free, no key) ----------
+  async function loadWeather() {
+    const body = $("weatherBody");
+    try {
+      const url =
+        "https://api.open-meteo.com/v1/forecast?latitude=" + CONFIG.lat + "&longitude=" + CONFIG.lon +
+        "&current=temperature_2m,relative_humidity_2m" +
+        "&daily=precipitation_probability_max,temperature_2m_max" +
+        "&timezone=Africa%2FLagos&forecast_days=3";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("weather");
+      weatherData = await r.json();
+      renderWeather();
+    } catch (_) {
+      body.textContent = t("wxFail");
+    }
+  }
+
+  function renderWeather() {
+    const body = $("weatherBody");
+    const w = weatherData;
+    body.innerHTML = "";
+
+    const now = document.createElement("p");
+    now.innerHTML = "";
+    const temp = Math.round(w.current.temperature_2m);
+    const hum = Math.round(w.current.relative_humidity_2m);
+    now.textContent = t("today") + ": " + temp + "°C, " + t("humidity") + " " + hum + "%";
+    now.style.fontWeight = "600";
+    body.appendChild(now);
+
+    const grid = document.createElement("div");
+    grid.className = "wx-grid";
+    w.daily.time.forEach((day, i) => {
+      const d = document.createElement("div");
+      d.className = "wx-day";
+      const name = document.createElement("strong");
+      name.textContent = i === 0
+        ? t("today")
+        : new Date(day + "T12:00:00").toLocaleDateString(lang === "ha" ? "ha" : "en-GB", { weekday: "short" });
+      const line1 = document.createElement("span");
+      line1.textContent = Math.round(w.daily.temperature_2m_max[i]) + "°C";
+      const line2 = document.createElement("div");
+      line2.textContent = t("rainChance") + " " + w.daily.precipitation_probability_max[i] + "%";
+      d.append(name, line1, line2);
+      grid.appendChild(d);
+    });
+    body.appendChild(grid);
+
+    const risky = w.daily.precipitation_probability_max[0] >= 60 || hum >= 80;
+    const note = document.createElement("div");
+    note.className = risky ? "wx-note" : "";
+    note.textContent = risky ? t("wxRisk") : t("wxOk");
+    body.appendChild(note);
+  }
+
+  // ---------- Start ----------
+  try {
+    const saved = localStorage.getItem("easifarm-lang");
+    if (saved === "ha") { lang = "ha"; $("toggleLang").checked = true; }
+  } catch (_) {}
+  applyLanguage();
+</script>
 </body>
 </html>
