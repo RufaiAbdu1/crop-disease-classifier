@@ -1,3 +1,215 @@
+require("dotenv").config();
+const express = require("express");
+const multer = require("multer");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ---------- Setup ----------
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const DATA_DIR = path.join(__dirname, "data");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const CLASSIFY_LOG = path.join(DATA_DIR, "classifications.jsonl");
+const FEEDBACK_LOG = path.join(DATA_DIR, "feedback.jsonl");
+
+const HF_MODEL_URL =
+  process.env.HF_MODEL_URL ||
+  "https://api-inference.huggingface.co/models/wambugu71/crop_leaf_diseases_vit";
+
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith("image/")) return cb(null, true);
+    cb(new Error("Only image files are allowed."));
+  },
+});
+
+app.use(express.static("public"));
+app.use(express.json());
+
+// ---------- Helpers ----------
+function safeUnlink(p) {
+  try {
+    if (p && fs.existsSync(p)) fs.unlinkSync(p);
+  } catch (e) {
+    console.error("Cleanup failed:", e.message);
+  }
+}
+
+function appendLog(file, obj) {
+  try {
+    fs.appendFileSync(file, JSON.stringify(obj) + "\n");
+  } catch (e) {
+    console.error("Log write failed:", e.message);
+  }
+}
+
+function readLog(file) {
+  try {
+    return fs
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (e) {
+    return [];
+  }
+}
+
+function requireAdmin(req, res, next) {
+  const key = process.env.ADMIN_KEY;
+  if (!key) return res.status(403).send("Set ADMIN_KEY in your environment to enable this.");
+  if (req.query.key !== key) return res.status(401).send("Wrong key.");
+  next();
+}
+
+// ---------- 1. Classify the leaf image ----------
+app.post("/classify", (req, res) => {
+  upload.single("image")(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: "Upload error", message: uploadErr.message });
+    }
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ error: "No image", message: "Please choose a leaf photo first." });
+    }
+
+    const imagePath = req.file.path;
+    try {
+      const image = fs.readFileSync(imagePath);
+
+      const response = await axios.post(HF_MODEL_URL, image, {
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          "Content-Type": "application/octet-stream",
+        },
+        timeout: 60000,
+      });
+
+      const predictions = Array.isArray(response.data) ? response.data : [];
+      const top = predictions[0];
+      const id = crypto.randomUUID();
+
+      if (top) {
+        appendLog(CLASSIFY_LOG, {
+          id,
+          time: new Date().toISOString(),
+          label: top.label,
+          confidence: top.score,
+        });
+      }
+
+      res.json({ id, predictions });
+    } catch (error) {
+      const status = error.response && error.response.status;
+      if (status === 503) {
+        return res.status(503).json({
+          error: "Model loading",
+          message: "The AI model is waking up. Please try again in 20 seconds.",
+        });
+      }
+      console.error("Classify error:", error.message);
+      res.status(500).json({
+        error: "Failed to classify image",
+        message: "Could not classify this image right now. Please try again.",
+      });
+    } finally {
+      safeUnlink(imagePath);
+    }
+  });
+});
+
+// ---------- 2. Treatment advice (English or Hausa) ----------
+app.post("/treatment", async (req, res) => {
+  let { diseaseName, lang } = req.body || {};
+  if (!diseaseName || typeof diseaseName !== "string") {
+    return res.status(400).json({ error: "Missing disease name" });
+  }
+  diseaseName = diseaseName.replace(/_/g, " ").slice(0, 100);
+  const replyLanguage = lang === "ha" ? "simple Hausa" : "simple English";
+
+  try {
+    const prompt =
+      `A farmer in Nigeria uploaded a crop leaf photo. The AI diagnosis is: "${diseaseName}".\n` +
+      `If the diagnosis is 'Invalid', say the image could not be identified and ask for a clearer leaf photo.\n` +
+      `If the leaf looks healthy, give 3 short tips to keep the crop healthy.\n` +
+      `Otherwise give practical advice in at most 6 short bullet points: what it is, what to do now, ` +
+      `low-cost or cultural control first, and how to prevent it next season. ` +
+      `If you mention any chemical, tell the farmer to check with an agricultural extension officer or agro-dealer first. ` +
+      `Do not use markdown symbols like ** or #. Reply in ${replyLanguage}.`;
+
+    const aiResponse = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "meta-llama/llama-3-8b-instruct",
+        temperature: 0.3,
+        max_tokens: 450,
+        messages: [
+          {
+            role: "system",
+            content: "You are a careful, helpful agricultural assistant for smallholder farmers in Nigeria.",
+          },
+          { role: "user", content: prompt },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 60000,
+      }
+    );
+
+    const advice = aiResponse.data.choices[0].message.content;
+    res.json({ treatment: advice });
+  } catch (err) {
+    console.error("Treatment error:", err.message);
+    res.status(500).json({
+      error: "Treatment error",
+      message: "Could not get treatment advice right now. Please try again or contact an expert.",
+    });
+  }
+});
+
+// ---------- 3. Farmer feedback: "Was this correct?" ----------
+app.post("/feedback", (req, res) => {
+  const { id, correct } = req.body || {};
+  if (!id || typeof correct !== "boolean") {
+    return res.status(400).json({ error: "id and correct (true/false) are required" });
+  }
+  appendLog(FEEDBACK_LOG, {
+    id: String(id).slice(0, 64),
+    time: new Date().toISOString(),
+    correct,
+  });
+  res.json({ ok: true });
+});
+
+// ---------- 4. Pilot evidence (protected by ADMIN_KEY) ----------
+app.get("/stats", requireAdmin, (req, res) => {
+  const classifications = readLog(CLASSIFY_LOG);
+  const feedback = readLog(FEEDBACK_LOG);
+
+  const latestFeedback = new Map();
+  feedback.forEach((f) => latestFeedback.set(f.id, f.correct));
+
+  const answered = latestFeedback.size;
+  const correctCount = [...latestFeedback.values()].filter(Boolean).length;
+
+  const byLabel = {};
+  classifications.forEach((c) => {
+    byLabel[c.label] = (byLabel[c.label] || 0) + 1;
+  });
+
   res.json({
     totalChecks: classifications.length,
     feedbackReceived: answered,
