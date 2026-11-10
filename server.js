@@ -85,6 +85,11 @@ function getGradioClient() {
   }
   return gradioClientPromise;
 }
+console.log(
+  "HF token present:", Boolean(process.env.HUGGINGFACE_API_KEY),
+  "| starts with hf_:", String(process.env.HUGGINGFACE_API_KEY || "").startsWith("hf_"),
+  "| Space:", process.env.HF_SPACE
+);
 
 // ---------- 1. Classify the leaf image ----------
 app.post("/classify", (req, res) => {
